@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data USA Snapshot</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Data USA Snapshot</h1>
+  <div class="sub" id="subtitle">United States · workforce · source: Census ACS PUMS via Data USA</div>
+</header>
+
+<main>
+  <section class="state" id="loading" hidden>
+    <div class="spinner"></div>
+    <div>Loading data from Data USA…</div>
+  </section>
+
+  <section class="state error" id="error" hidden>
+    <h3>Couldn't load data</h3>
+    <div class="note" id="error-message"></div>
+    <button class="retry" id="retry" type="button">Retry</button>
+  </section>
+
+  <section class="state" id="empty" hidden>
+    <h3>No data available</h3>
+    <div class="note">The API returned no records for this selection.</div>
+  </section>
+
+  <div id="content" hidden>
+    <div class="grid">
+      <div class="card"><h2>Workforce size</h2><div class="big" id="workforce"></div><div class="note">Employed people (including armed forces)</div></div>
+      <div class="card"><h2>Average earnings</h2><div class="big" id="avg-wage"></div><div class="note">Mean yearly wage. Includes part-time and part-year workers; not a salary or a median.</div></div>
+
+      <div class="card wide">
+        <div class="controls">
+          <h2>Workforce by industry</h2>
+          <label>Focus on
+            <select id="focus-industry"></select>
+          </label>
+        </div>
+        <div id="industry-chart"></div>
+        <div class="note">Click a bar (or use the menu) to see who works in that industry in the sections below.</div>
+      </div>
+
+      <div class="card wide">
+        <div class="controls">
+          <h2 id="ga-title">Gender</h2>
+          <div class="tabs" id="demo-tabs" role="tablist"></div>
+        </div>
+        <div class="status" id="ga-status" aria-live="polite"></div>
+        <div id="ga-chart"></div>
+        <div class="note">Bars show each group's share of the selected industry's workforce. The dark tick marks that group's share of the whole workforce, so you can see over- or under-representation.</div>
+      </div>
+
+      <div class="card wide spotlight">
+        <h2 id="race-title">Race &amp; ethnicity</h2>
+        <div class="callout">
+          <strong>Read this first:</strong> the Census asks about <em>race</em> and <em>Hispanic origin</em> as two separate questions. A Hispanic worker can be of any race, so the two charts below overlap and must not be added together.
+        </div>
+        <div class="status" id="race-status" aria-live="polite"></div>
+        <div class="two-col">
+          <div><h3>Race</h3><div id="race-chart"></div></div>
+          <div><h3>Hispanic origin</h3><div id="ethnicity-chart"></div></div>
+        </div>
+        <div class="note">
+          Bars: share of the selected industry's workforce. Dark tick: share of the whole workforce. Average wages are for that group in that industry and are affected by age, education, hours and job mix, so differences are not evidence of cause. Groups marked "small group" are less precise.
+        </div>
+      </div>
+
+      <div class="card wide edu">
+        <h2>Education</h2>
+        <div id="education-chart"></div>
+        <div class="note">Share of the workforce by highest education level. Hover a bar for average wage.</div>
+      </div>
+    </div>
+
+    <details class="card about">
+      <summary>How to read this data</summary>
+      <ol>
+        <li><strong>Survey estimates, not a headcount.</strong> The numbers come from the Census ACS PUMS 5-year sample. "2024" pools 2020–2024. Small groups and small industries are noisy.</li>
+        <li><strong>Average wage is a mean.</strong> High earners pull it up, and it mixes full-time, part-time and part-year workers.</li>
+        <li><strong>Gaps are not proof of cause.</strong> Group averages differ partly because of age, education, hours worked and occupation mix.</li>
+        <li><strong>A share is not representation.</strong> Compare a group's share in an industry with its share of the whole workforce (the dark tick).</li>
+        <li><strong>Census categories.</strong> Race and Hispanic origin are self-reported and asked separately. Gender is the Census male/female question. Age ranges and the grouping of small categories are choices made in this app.</li>
+        <li><strong>"Workforce"</strong> here means employed people plus armed forces, each counted in one industry.</li>
+      </ol>
+    </details>
+  </div>
+</main>
+
+<footer>Data: U.S. Census Bureau ACS PUMS 5-year estimates, served by Data USA.</footer>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,401 @@
+// Data USA Snapshot: fetches workforce data from the Data USA (Tesseract) API
+// and renders it with plain DOM code. Settings live in config.json.
+
+const $ = (id) => document.getElementById(id);
+
+const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const percent = (share) => `${(share * 100).toFixed(1)}%`;
+
+// Color-blind-friendly palette for the race / ethnicity bars.
+const PALETTE = ["#2f6fed", "#e69f00", "#009e73", "#cc79a7", "#d55e00", "#56b4e9", "#7a5195", "#8c8c8c"];
+const GENDER_AGE_TABS = ["Gender", "Age"];
+
+let config;
+let industryRows = [];
+let focusIndustry = ""; // "" means all industries
+let activeTab = GENDER_AGE_TABS[0];
+const demoRequests = {}; // demographic key -> cached promise of normalized rows
+let gaToken = 0; // guards against out-of-date async renders
+let raceToken = 0;
+
+// ---------- API ----------
+
+async function loadConfig() {
+  const response = await fetch("config.json");
+  if (!response.ok) throw new Error(`Could not load config.json (HTTP ${response.status})`);
+console.log("Config loaded:", response);
+
+
+
+
+
+  return response.json();
+}
+
+// Builds a Tesseract query, fetches it (with a timeout), and returns the array of records.
+async function fetchCube(drilldowns, measures) {
+  const params = new URLSearchParams({
+    cube: config.cube,
+    drilldowns: drilldowns.join(","),
+    measures: measures.join(","),
+    include: `Year:${config.year};${config.workforceFilter}`,
+  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  let response;
+  try {
+    response = await fetch(`${config.baseUrl}?${params}`, { signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("Data USA took too long to respond");
+    throw new Error("Couldn't reach Data USA (network error)");
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!response.ok) throw new Error(`Data USA returned HTTP ${response.status}`);
+  const json = await response.json();
+  if (json.error) throw new Error(json.detail || "Data USA reported an error");
+  return json.data;
+}
+
+// ---------- UI states ----------
+
+function setState(state, message = "") {
+  $("loading").hidden = state !== "loading";
+  $("error").hidden = state !== "error";
+  $("empty").hidden = state !== "empty";
+  $("content").hidden = state !== "data";
+  if (state === "error") $("error-message").textContent = message;
+}
+
+// Shows a status message, with an optional Retry button, inside `element`.
+function showStatus(element, message, retry) {
+  element.replaceChildren(document.createTextNode(message));
+  if (retry) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Retry";
+    button.addEventListener("click", retry);
+    element.append(button);
+  }
+}
+
+// ---------- Rendering helpers ----------
+
+// Draws horizontal bars into `container`.
+// item: { label, value, display, sub, title, marker, color }
+// options: { onSelect(label), selected }
+function renderBars(container, items, options = {}) {
+  container.replaceChildren();
+  if (!items.length) {
+    container.textContent = "No data for this selection.";
+    return;
+  }
+  const max = Math.max(...items.flatMap((item) => [item.value, item.marker || 0]));
+  const scale = (value) => (max ? `${(value / max) * 100}%` : "0%");
+
+  for (const item of items) {
+    const row = document.createElement("div");
+    row.className = "row";
+    if (item.title) row.title = item.title;
+
+    const label = document.createElement("span");
+    label.textContent = item.label;
+
+    const track = document.createElement("div");
+    track.className = "track";
+    const fill = document.createElement("div");
+    fill.className = "fill";
+    fill.style.width = scale(item.value);
+    if (item.color) fill.style.background = item.color;
+    track.append(fill);
+    if (item.marker !== undefined) {
+      const marker = document.createElement("div");
+      marker.className = "marker";
+      marker.style.left = scale(item.marker);
+      marker.title = `Share of whole workforce: ${percent(item.marker)}`;
+      track.append(marker);
+    }
+
+    const value = document.createElement("span");
+    value.className = "val";
+    value.textContent = item.display;
+    if (item.sub) {
+      const sub = document.createElement("small");
+      sub.textContent = item.sub;
+      value.append(sub);
+    }
+
+    row.append(label, track, value);
+
+    if (options.onSelect) {
+      row.classList.add("clickable");
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      if (options.selected === item.label) row.classList.add("selected");
+      row.addEventListener("click", () => options.onSelect(item.label));
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          options.onSelect(item.label);
+        }
+      });
+    }
+    container.append(row);
+  }
+}
+
+// ---------- Main sections ----------
+
+function renderStats(nationRows) {
+  const nation = nationRows[0];
+  $("workforce").textContent = compact.format(nation[config.measures.workers]);
+  $("avg-wage").textContent = money.format(nation[config.measures.wage]);
+}
+
+function renderIndustryChart() {
+  const { workers, wage } = config.measures;
+  const items = industryRows
+    .map((row) => ({
+      label: row[config.levels.industry],
+      value: Number(row[workers]) || 0,
+      display: compact.format(Number(row[workers]) || 0),
+      sub: `avg ${money.format(Number(row[wage]) || 0)}`,
+      title: `Average wage: ${money.format(Number(row[wage]) || 0)}`,
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, config.topIndustries);
+  renderBars($("industry-chart"), items, { onSelect: toggleFocus, selected: focusIndustry });
+}
+
+function renderEducation(rows) {
+  const { workers, wage } = config.measures;
+  const groups = config.educationGroups.map((group) => ({ ...group, n: 0, wageTotal: 0 }));
+  let other = { label: "Other", members: [], n: 0, wageTotal: 0 };
+  for (const row of rows) {
+    const n = Number(row[workers]) || 0;
+    const group = groups.find((g) => g.members.includes(row[config.levels.education])) || other;
+    group.n += n;
+    group.wageTotal += n * (Number(row[wage]) || 0);
+  }
+  if (other.n) groups.push(other);
+  const total = groups.reduce((acc, g) => acc + g.n, 0);
+  const items = groups.map((g) => ({
+    label: g.label,
+    value: g.n,
+    display: percent(total ? g.n / total : 0),
+    sub: g.n ? `avg ${money.format(g.wageTotal / g.n)}` : "",
+    title: `${compact.format(g.n)} workers`,
+  }));
+  renderBars($("education-chart"), items);
+}
+
+// ---------- Focus industry (drives the demographic sections) ----------
+
+function toggleFocus(name) {
+  setFocus(focusIndustry === name ? "" : name);
+}
+
+function setFocus(name) {
+  focusIndustry = name;
+  $("focus-industry").value = name;
+  renderIndustryChart();
+  renderGenderAge();
+  renderRace();
+}
+
+const focusLabel = () => focusIndustry || "all industries";
+
+function setupFocusSelect() {
+  const select = $("focus-industry");
+  select.replaceChildren(new Option("All industries", ""));
+  const names = industryRows.map((row) => row[config.levels.industry]).sort();
+  for (const name of names) select.append(new Option(name, name));
+  select.onchange = () => setFocus(select.value);
+}
+
+// ---------- Demographics x industry ----------
+
+// Maps a raw API value to the label shown in the app.
+function groupLabel(key, raw) {
+  if (key === "Age") {
+    const bucket = config.ageBuckets.find((b) => raw >= b.min && raw <= b.max);
+    return bucket ? bucket.label : "Other";
+  }
+  if (key === "Race") return config.raceLabels[raw] || raw;
+  if (key === "Ethnicity") {
+    if (raw === "Not Hispanic") return "Not Hispanic or Latino";
+    return config.hispanicTop.includes(raw) ? raw : "Other Hispanic or Latino";
+  }
+  return raw;
+}
+
+// Fetches (once) industry x demographic rows and normalizes them.
+function getDemoRows(key) {
+  if (!demoRequests[key]) {
+    const { workers, wage } = config.measures;
+    const level = config.demographics[key];
+    const request = fetchCube([config.levels.industry, level], [workers, wage]).then((rows) =>
+      rows.map((row) => ({
+        industry: row[config.levels.industry],
+        group: groupLabel(key, row[level]),
+        workers: Number(row[workers]) || 0,
+        wage: Number(row[wage]) || 0,
+      }))
+    );
+    request.catch(() => delete demoRequests[key]); // allow a retry after failure
+    demoRequests[key] = request;
+  }
+  return demoRequests[key];
+}
+
+// Sums workers per group, tracking wage x workers so we can compute weighted averages.
+function aggregate(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const entry = groups.get(row.group) || { n: 0, wageTotal: 0 };
+    entry.n += row.workers;
+    entry.wageTotal += row.workers * row.wage;
+    groups.set(row.group, entry);
+  }
+  return groups;
+}
+
+const totalOf = (groups) => [...groups.values()].reduce((acc, g) => acc + g.n, 0);
+
+// Builds bar items: share within the focus industry, with a marker at the overall share.
+function buildItems(key, rows, { showWage }) {
+  const overall = aggregate(rows);
+  const inFocus = focusIndustry ? aggregate(rows.filter((r) => r.industry === focusIndustry)) : overall;
+  const overallTotal = totalOf(overall);
+  const focusTotal = totalOf(inFocus);
+  if (!focusTotal) return [];
+
+  let names = [...overall.keys()].filter((name) => overall.get(name).n > 0);
+  if (key === "Age") {
+    const order = config.ageBuckets.map((b) => b.label);
+    names.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  } else {
+    names.sort((a, b) => overall.get(b).n - overall.get(a).n); // stable order across industries
+  }
+
+  return names.map((name, index) => {
+    const group = inFocus.get(name) || { n: 0, wageTotal: 0 };
+    const share = group.n / focusTotal;
+    const overallShare = overall.get(name).n / overallTotal;
+    const parts = [];
+    if (focusIndustry) parts.push(`overall ${percent(overallShare)}`);
+    if (showWage && group.n) parts.push(`avg ${money.format(group.wageTotal / group.n)}`);
+    if (showWage && group.n < config.smallGroup) parts.push("small group");
+    return {
+      label: name,
+      value: share,
+      display: percent(share),
+      sub: parts.join(" · "),
+      title: `${compact.format(group.n)} workers`,
+      marker: focusIndustry ? overallShare : undefined,
+      color: showWage ? PALETTE[index % PALETTE.length] : undefined,
+    };
+  });
+}
+
+async function renderGenderAge() {
+  const token = ++gaToken;
+  const key = activeTab;
+  $("ga-title").textContent = `${key} · ${focusLabel()}`;
+  try {
+    if (!demoRequests[key]) showStatus($("ga-status"), "Loading…");
+    const rows = await getDemoRows(key);
+    if (token !== gaToken) return; // a newer render replaced this one
+    $("ga-status").replaceChildren();
+    renderBars($("ga-chart"), buildItems(key, rows, { showWage: false }));
+  } catch (error) {
+    if (token !== gaToken) return;
+    $("ga-chart").replaceChildren();
+    showStatus($("ga-status"), `Couldn't load ${key.toLowerCase()} data: ${error.message}`, renderGenderAge);
+  }
+}
+
+async function renderRace() {
+  const token = ++raceToken;
+  $("race-title").textContent = `Race & ethnicity · ${focusLabel()}`;
+  try {
+    if (!demoRequests.Race || !demoRequests.Ethnicity) showStatus($("race-status"), "Loading…");
+    const [raceData, ethnicityData] = await Promise.all([getDemoRows("Race"), getDemoRows("Ethnicity")]);
+    if (token !== raceToken) return;
+    $("race-status").replaceChildren();
+    renderBars($("race-chart"), buildItems("Race", raceData, { showWage: true }));
+    renderBars($("ethnicity-chart"), buildItems("Ethnicity", ethnicityData, { showWage: true }));
+  } catch (error) {
+    if (token !== raceToken) return;
+    $("race-chart").replaceChildren();
+    $("ethnicity-chart").replaceChildren();
+    showStatus($("race-status"), `Couldn't load race & ethnicity data: ${error.message}`, renderRace);
+  }
+}
+
+function setupTabs() {
+  const tabs = $("demo-tabs");
+  tabs.replaceChildren();
+  for (const tab of GENDER_AGE_TABS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(tab === activeTab));
+    button.textContent = tab;
+    button.addEventListener("click", () => {
+      activeTab = tab;
+      for (const other of tabs.children) other.setAttribute("aria-selected", String(other === button));
+      renderGenderAge();
+    });
+    tabs.append(button);
+  }
+}
+
+// ---------- Main ----------
+
+async function load() {
+  setState("loading");
+  try {
+    if (!config) config = await loadConfig();
+    $("subtitle").textContent = `United States · ${config.year} (5-year estimate) · workforce · source: Census ACS PUMS via Data USA`;
+console.log("Config loaded:", config);
+
+
+    const { workers, wage } = config.measures;
+    const [nationRows, industries, educationRows] = await Promise.all([
+      fetchCube([config.levels.nation], [workers, wage]),
+      fetchCube([config.levels.industry], [workers, wage]),
+      fetchCube([config.levels.education], [workers, wage]),
+    ]);
+
+    if (!nationRows.length || !industries.length) {
+      setState("empty");
+      return;
+    }
+
+    industryRows = industries;
+    focusIndustry = "";
+    renderStats(nationRows);
+    renderEducation(educationRows);
+    setupFocusSelect();
+    setupTabs();
+    renderIndustryChart();
+    setState("data");
+    renderGenderAge();
+    renderRace();
+  } catch (error) {
+    console.error(error);
+    const hint =
+      location.protocol === "file:"
+        ? "This page was opened as a file. Serve it instead: run `python3 -m http.server` in this folder and visit http://localhost:8000."
+        : error.message;
+    setState("error", hint);
+  }
+}
+
+$("retry").addEventListener("click", () => {
+  for (const key of Object.keys(demoRequests)) delete demoRequests[key];
+  load();
+});
+load();

@@ -1,0 +1,47 @@
+{
+  "baseUrl": "https://api.datausa.io/tesseract/data.jsonrecords",
+  "cube": "pums_5",
+  "year": 2024,
+  "timeoutMs": 20000,
+  "workforceFilter": "Employment Status:1,2,4,5",
+  "measures": {
+    "workers": "Total Population",
+    "wage": "Average Wage"
+  },
+  "levels": {
+    "nation": "Nation",
+    "industry": "Industry Sector",
+    "education": "Group"
+  },
+  "demographics": {
+    "Gender": "Gender",
+    "Age": "Age",
+    "Race": "Race",
+    "Ethnicity": "PUMS Ethnicity"
+  },
+  "ageBuckets": [
+    { "label": "Under 25", "min": 0, "max": 24 },
+    { "label": "25–34", "min": 25, "max": 34 },
+    { "label": "35–44", "min": 35, "max": 44 },
+    { "label": "45–54", "min": 45, "max": 54 },
+    { "label": "55–64", "min": 55, "max": 64 },
+    { "label": "65+", "min": 65, "max": 120 }
+  ],
+  "raceLabels": {
+    "American Indian": "American Indian / Alaska Native",
+    "Alaska Native": "American Indian / Alaska Native",
+    "American Indian and Alaska Native tribes specified; or American Indian or Alaska Native, not specified and no other races": "American Indian / Alaska Native",
+    "Native Hawaiian and Other Pacific Islander": "Native Hawaiian / Pacific Islander"
+  },
+  "hispanicTop": ["Mexican", "Puerto Rican", "Cuban"],
+  "educationGroups": [
+    { "label": "Less than high school", "members": ["No Schooling", "Preschool", "Primary Education", "Secondary Education"] },
+    { "label": "High school or equivalent", "members": ["High School or Equivalent"] },
+    { "label": "Some college", "members": ["Some college"] },
+    { "label": "Associate degree", "members": ["Associates Degree"] },
+    { "label": "Bachelor's degree", "members": ["Bachelors Degree"] },
+    { "label": "Graduate degree", "members": ["Graduate Degree"] }
+  ],
+  "smallGroup": 250000,
+  "topIndustries": 14
+}
