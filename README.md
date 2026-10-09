@@ -2,7 +2,8 @@
 
 A small web app, built with plain HTML, CSS, JavaScript and JSON (no frameworks, no build step), that fetches live workforce data from the [Data USA](https://datausa.io) API and shows:
 
-- Workforce size and average earnings (United States, 2024)
+- A location picker: the whole United States, any state, DC or Puerto Rico (shareable link such as `?state=06`)
+- Workforce size and average earnings (2024)
 - Workforce by industry (bar chart); click an industry to focus on it
 - Gender and age breakdown of the focused industry
 - Race and Hispanic origin breakdown of the focused industry, compared with the whole workforce
@@ -38,6 +39,7 @@ No API key is needed. Data USA's API is open.
 Source: U.S. Census Bureau American Community Survey (ACS) PUMS 5-year estimates, via the Data USA Tesseract API (`pums_5` cube).
 
 - These are survey estimates, not a headcount. "2024" pools 2020–2024. Small groups are noisy.
+- In small states, most race and ethnicity groups are small and flagged as less precise.
 - "Workforce" means employed people plus armed forces. Each person counts in one industry.
 - Average wage is a mean. It includes part-time and part-year workers and is pulled up by high earners.
 - Differences between groups are not evidence of cause; age, education, hours and job mix all play a part.

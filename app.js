@@ -15,9 +15,12 @@ let config;
 let industryRows = [];
 let focusIndustry = ""; // "" means all industries
 let activeTab = GENDER_AGE_TABS[0];
+let states = []; // [{ id, name }] loaded from the API
+let selectedState = null; // { id, name }, or null for the whole United States
 const demoRequests = {}; // demographic key -> cached promise of normalized rows
 let gaToken = 0; // guards against out-of-date async renders
 let raceToken = 0;
+let loadToken = 0;
 
 // ---------- API ----------
 
@@ -34,12 +37,15 @@ console.log("Config loaded:", response);
 }
 
 // Builds a Tesseract query, fetches it (with a timeout), and returns the array of records.
-async function fetchCube(drilldowns, measures) {
+// Results are limited to the selected state unless `allStates` is true.
+async function fetchCube(drilldowns, measures, { allStates = false } = {}) {
+  let include = `Year:${config.year};${config.workforceFilter}`;
+  if (selectedState && !allStates) include += `;${config.levels.state}:${selectedState.id}`;
   const params = new URLSearchParams({
     cube: config.cube,
     drilldowns: drilldowns.join(","),
     measures: measures.join(","),
-    include: `Year:${config.year};${config.workforceFilter}`,
+    include,
   });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
@@ -211,6 +217,7 @@ function setupFocusSelect() {
   select.replaceChildren(new Option("All industries", ""));
   const names = industryRows.map((row) => row[config.levels.industry]).sort();
   for (const name of names) select.append(new Option(name, name));
+  select.value = focusIndustry;
   select.onchange = () => setFocus(select.value);
 }
 
@@ -243,7 +250,10 @@ function getDemoRows(key) {
         wage: Number(row[wage]) || 0,
       }))
     );
-    request.catch(() => delete demoRequests[key]); // allow a retry after failure
+    // Allow a retry after failure (only if the cache entry is still this request).
+    request.catch(() => {
+      if (demoRequests[key] === request) delete demoRequests[key];
+    });
     demoRequests[key] = request;
   }
   return demoRequests[key];
@@ -352,22 +362,66 @@ function setupTabs() {
   }
 }
 
+// ---------- State picker ----------
+
+// The API's State level has an ID like "04000US06"; the last two digits are the state's FIPS code.
+const fipsOf = (id) => id.slice(-2);
+
+async function loadStates() {
+  const rows = await fetchCube([config.levels.state], [config.measures.workers], { allStates: true });
+  return rows
+    .map((row) => ({ id: row[`${config.levels.state} ID`], name: row[config.levels.state] }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function setupStatePicker() {
+  const select = $("state-select");
+  select.replaceChildren(new Option("United States", ""));
+  for (const state of states) select.append(new Option(state.name, state.id));
+  select.value = selectedState ? selectedState.id : "";
+  select.disabled = false;
+  select.onchange = () => chooseState(select.value);
+}
+
+function chooseState(id) {
+  selectedState = states.find((state) => state.id === id) || null;
+  // Keep the choice in the URL (?state=06) so the page can be shared or reloaded.
+  const url = new URL(location.href);
+  if (selectedState) url.searchParams.set("state", fipsOf(selectedState.id));
+  else url.searchParams.delete("state");
+  history.replaceState(null, "", url);
+  for (const key of Object.keys(demoRequests)) delete demoRequests[key];
+  load();
+}
+
 // ---------- Main ----------
 
 async function load() {
+  const token = ++loadToken;
   setState("loading");
   try {
     if (!config) config = await loadConfig();
-    $("subtitle").textContent = `United States · ${config.year} (5-year estimate) · workforce · source: Census ACS PUMS via Data USA`;
 console.log("Config loaded:", config);
-
+    if (!states.length) {
+      try {
+        states = await loadStates();
+        const wanted = new URLSearchParams(location.search).get("state");
+        selectedState = states.find((state) => fipsOf(state.id) === wanted) || null;
+        setupStatePicker();
+      } catch (error) {
+        console.error("Couldn't load the state list; showing national data only.", error);
+      }
+    }
+    const place = selectedState ? selectedState.name : "United States";
+    $("subtitle").textContent = `${place} · ${config.year} (5-year estimate) · workforce · source: Census ACS PUMS via Data USA`;
 
     const { workers, wage } = config.measures;
     const [nationRows, industries, educationRows] = await Promise.all([
-      fetchCube([config.levels.nation], [workers, wage]),
+      fetchCube([selectedState ? config.levels.state : config.levels.nation], [workers, wage]),
       fetchCube([config.levels.industry], [workers, wage]),
       fetchCube([config.levels.education], [workers, wage]),
     ]);
+    if (token !== loadToken) return; // the user picked another place while this was loading
 
     if (!nationRows.length || !industries.length) {
       setState("empty");
@@ -375,7 +429,8 @@ console.log("Config loaded:", config);
     }
 
     industryRows = industries;
-    focusIndustry = "";
+    // Keep the focused industry when it exists in the new place; otherwise reset it.
+    if (!industries.some((row) => row[config.levels.industry] === focusIndustry)) focusIndustry = "";
     renderStats(nationRows);
     renderEducation(educationRows);
     setupFocusSelect();
@@ -385,6 +440,7 @@ console.log("Config loaded:", config);
     renderGenderAge();
     renderRace();
   } catch (error) {
+    if (token !== loadToken) return;
     console.error(error);
     const hint =
       location.protocol === "file:"

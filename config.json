@@ -10,6 +10,7 @@
   },
   "levels": {
     "nation": "Nation",
+    "state": "State",
     "industry": "Industry Sector",
     "education": "Group"
   },

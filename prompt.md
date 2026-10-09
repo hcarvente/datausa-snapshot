@@ -14,12 +14,13 @@ A small, dependency-free web app (HTML + CSS + JavaScript + JSON) that fetches l
 | 4 | Use one cube, **`pums_5`** (ACS PUMS 5-year) | It has industry, degree, wage, gender, race, ethnicity and age in one place, so one query pattern covers every section |
 | 5 | Plain CSS bars, **no chart library** | Fewer moving parts while learning |
 | 6 | Mockup first, then delete it | A throwaway `mockup.html` with made-up numbers settled the layout and the four UI states before any fetch code. It was deleted once the real app replaced it, so the repo has no fake data |
-| 7 | National, latest year (2024) first | Keeps the first version simple; state picker is a later stretch |
+| 7 | National, latest year (2024) first, then a state picker | Kept v1 simple; the picker was added once the national view worked |
 | 8 | "Workforce" = employed + armed forces (`Employment Status:1,2,4,5`) | The unfiltered total includes children and non-workers, which made average wage misleading ($32k vs $66k) |
 | 9 | One shared **focus industry** drives the demographic sections | Lets you compare who works in an industry against the whole workforce |
 | 10 | Race & ethnicity get their own highlighted card with a "read this first" note | They are two separate Census questions and must not be added together; the card also shows each group's share against its overall share (dark tick) |
 | 11 | Show limits next to the data (card captions + "How to read this data" panel) | Survey estimates, mean wages, and group gaps are not proof of cause |
-| 12 | Publish to GitHub | Nothing secret in the repo (no key), so safe to share |
+| 12 | State picker filters every query with `State:<id>` in `include`; the choice is kept in the URL (`?state=06`) | The API filters by state without changing the drilldowns, so each section reuses its existing query. The URL makes a view shareable and survives reload |
+| 13 | Publish to GitHub | Nothing secret in the repo (no key), so safe to share |
 
 ## Features
 - Workforce size and average earnings (stat cards)
@@ -27,6 +28,7 @@ A small, dependency-free web app (HTML + CSS + JavaScript + JSON) that fetches l
 - Gender and age breakdown for the focused industry, with a tick for the overall share
 - Race and Hispanic origin breakdown (side by side), with average wage and a "small group" flag
 - Education breakdown (six levels, in order, with average wage)
+- State picker (50 states, DC, Puerto Rico; defaults to the whole US) that updates every section, with a shareable `?state=` link
 - Loading, error (with Retry, timeout, and a hint if opened as a file) and no-data states
 - "How to read this data" panel
 
@@ -40,6 +42,13 @@ A small, dependency-free web app (HTML + CSS + JavaScript + JSON) that fetches l
 - Raw race has 9 groups, three of them different American Indian / Alaska Native labels (one very long); these are merged (config `raceLabels`).
 - Raw Hispanic origin has 24 values ("Not Hispanic" plus 23 origins); the app shows Not Hispanic, Mexican, Puerto Rican, Cuban and "Other Hispanic or Latino" (config `hispanicTop`).
 - The API sends `access-control-allow-origin: *`, so browser `fetch()` works from localhost.
+
+## State picker findings
+- `GET` with `drilldowns=State` lists 52 places (50 states, DC, Puerto Rico); state IDs look like `04000US06` (last two digits = FIPS code). The list is fetched from the API at startup, not hard-coded.
+- Filtering uses the same `include` string: `Year:2024;Employment Status:1,2,4,5;State:04000US06`. No state drilldown is needed for the industry, education or demographic queries.
+- Examples checked: California 18.9M workers, $75,706 average; Wyoming 291K workers, $55,617.
+- Small states: almost every race and ethnicity group falls under the 250,000-worker "small group" flag, which is honest but noisy; the caption now says so.
+- If the state list fails to load, the app logs it and shows national data only. Switching places while a load is in flight is guarded by `loadToken`, and the focused industry is kept if it exists in the new place.
 
 ## Review: ways the code could break (found and handled)
 - Stale async results: a slow request for one tab could overwrite another. Fixed with render tokens (`gaToken`, `raceToken`).
@@ -61,5 +70,6 @@ A small, dependency-free web app (HTML + CSS + JavaScript + JSON) that fetches l
 - [x] 7. Tested states in headless Chrome: data, error (bad cube name → HTTP 400), empty (year 1999)
 - [x] 7a. Reviewed code; fixed the issues above
 - [x] 7b. Demographic view: gender, age, race, Hispanic origin × industry (tested by focusing Construction)
-- [ ] 7c. README, `.gitignore`, commit, push to GitHub (repo name and visibility to confirm first)
-- [ ] 8. Final update of this log (ideas: state picker, median wage, margin of error)
+- [x] 7c. README, `.gitignore`, commit, pushed to https://github.com/hcarvente/datausa-snapshot
+- [x] 9. State picker (list from API, `State:<id>` filter, `?state=` URL, stale-load guard); tested California deep link and a switch to Wyoming
+- [ ] 8. Final update of this log (ideas: median wage, margin of error, compare two states)

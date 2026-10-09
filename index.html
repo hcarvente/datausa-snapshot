@@ -10,6 +10,11 @@
 <header>
   <h1>Data USA Snapshot</h1>
   <div class="sub" id="subtitle">United States · workforce · source: Census ACS PUMS via Data USA</div>
+  <label class="place-picker">Location
+    <select id="state-select" disabled>
+      <option value="">United States</option>
+    </select>
+  </label>
 </header>
 
 <main>
@@ -52,7 +57,7 @@
         </div>
         <div class="status" id="ga-status" aria-live="polite"></div>
         <div id="ga-chart"></div>
-        <div class="note">Bars show each group's share of the selected industry's workforce. The dark tick marks that group's share of the whole workforce, so you can see over- or under-representation.</div>
+        <div class="note">Bars show each group's share of the selected industry's workforce. The dark tick marks that group's share of the whole workforce, so you can see over- or under-representation. "Whole workforce" means the selected location.</div>
       </div>
 
       <div class="card wide spotlight">
@@ -66,7 +71,7 @@
           <div><h3>Hispanic origin</h3><div id="ethnicity-chart"></div></div>
         </div>
         <div class="note">
-          Bars: share of the selected industry's workforce. Dark tick: share of the whole workforce. Average wages are for that group in that industry and are affected by age, education, hours and job mix, so differences are not evidence of cause. Groups marked "small group" are less precise.
+          Bars: share of the selected industry's workforce. Dark tick: share of the whole workforce in the selected location. Average wages are for that group in that industry and are affected by age, education, hours and job mix, so differences are not evidence of cause. Groups marked "small group" (under 250,000 workers) are less precise, and in smaller states most groups will be.
         </div>
       </div>
 
