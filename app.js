@@ -22,11 +22,29 @@ let gaToken = 0; // guards against out-of-date async renders
 let raceToken = 0;
 let loadToken = 0;
 
+// ---------- Friendly messages ----------
+
+// Errors we throw on purpose carry a message that is safe to show to anyone.
+// Technical details go to the browser console instead.
+class UserFacingError extends Error {}
+
+const GENERIC_ERROR = "Something unexpected went wrong. Please refresh the page and try again.";
+const messageFor = (error) => (error instanceof UserFacingError ? error.message : GENERIC_ERROR);
+
+function messageForStatus(status) {
+  if (status === 429) return "The data service is busy right now. Please wait a minute and try again.";
+  if (status >= 500) return "The data service is having trouble right now. Please try again in a few minutes.";
+  return "The data service couldn't understand our request. It may have changed. Please try again later.";
+}
+
 // ---------- API ----------
 
 async function loadConfig() {
   const response = await fetch("config.json");
-  if (!response.ok) throw new Error(`Could not load config.json (HTTP ${response.status})`);
+  if (!response.ok) {
+    console.error(`Could not load config.json (HTTP ${response.status})`);
+    throw new UserFacingError("This page couldn't load its settings. Please refresh the page.");
+  }
 console.log("Config loaded:", response);
 
 
@@ -53,14 +71,23 @@ async function fetchCube(drilldowns, measures, { allStates = false } = {}) {
   try {
     response = await fetch(`${config.baseUrl}?${params}`, { signal: controller.signal });
   } catch (error) {
-    if (error.name === "AbortError") throw new Error("Data USA took too long to respond");
-    throw new Error("Couldn't reach Data USA (network error)");
+    console.error("Data USA request failed:", error);
+    if (error.name === "AbortError") {
+      throw new UserFacingError("The data service is taking longer than usual to respond. Please try again in a moment.");
+    }
+    throw new UserFacingError("We couldn't reach the data service. Please check your internet connection and try again.");
   } finally {
     clearTimeout(timer);
   }
-  if (!response.ok) throw new Error(`Data USA returned HTTP ${response.status}`);
+  if (!response.ok) {
+    console.error(`Data USA returned HTTP ${response.status} for`, params.toString());
+    throw new UserFacingError(messageForStatus(response.status));
+  }
   const json = await response.json();
-  if (json.error) throw new Error(json.detail || "Data USA reported an error");
+  if (json.error) {
+    console.error("Data USA reported an error:", json.detail);
+    throw new UserFacingError("The data service reported a problem with this request. Please try again later.");
+  }
   return json.data;
 }
 
@@ -80,7 +107,7 @@ function showStatus(element, message, retry) {
   if (retry) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = "Retry";
+    button.textContent = "Try again";
     button.addEventListener("click", retry);
     element.append(button);
   }
@@ -94,7 +121,7 @@ function showStatus(element, message, retry) {
 function renderBars(container, items, options = {}) {
   container.replaceChildren();
   if (!items.length) {
-    container.textContent = "No data for this selection.";
+    container.textContent = "No data is available for this selection.";
     return;
   }
   const max = Math.max(...items.flatMap((item) => [item.value, item.marker || 0]));
@@ -322,7 +349,8 @@ async function renderGenderAge() {
   } catch (error) {
     if (token !== gaToken) return;
     $("ga-chart").replaceChildren();
-    showStatus($("ga-status"), `Couldn't load ${key.toLowerCase()} data: ${error.message}`, renderGenderAge);
+    console.error(error);
+    showStatus($("ga-status"), `We couldn't load the ${key.toLowerCase()} breakdown. ${messageFor(error)}`, renderGenderAge);
   }
 }
 
@@ -340,7 +368,8 @@ async function renderRace() {
     if (token !== raceToken) return;
     $("race-chart").replaceChildren();
     $("ethnicity-chart").replaceChildren();
-    showStatus($("race-status"), `Couldn't load race & ethnicity data: ${error.message}`, renderRace);
+    console.error(error);
+    showStatus($("race-status"), `We couldn't load the race and ethnicity breakdown. ${messageFor(error)}`, renderRace);
   }
 }
 
@@ -410,6 +439,7 @@ console.log("Config loaded:", config);
         setupStatePicker();
       } catch (error) {
         console.error("Couldn't load the state list; showing national data only.", error);
+        $("place-note").textContent = "The list of states isn't available right now, so you're seeing the whole United States.";
       }
     }
     const place = selectedState ? selectedState.name : "United States";
@@ -444,8 +474,8 @@ console.log("Config loaded:", config);
     console.error(error);
     const hint =
       location.protocol === "file:"
-        ? "This page was opened as a file. Serve it instead: run `python3 -m http.server` in this folder and visit http://localhost:8000."
-        : error.message;
+        ? "This page can't run by double-clicking the file. In a terminal, run `python3 -m http.server` in this folder, then visit http://localhost:8000."
+        : messageFor(error);
     setState("error", hint);
   }
 }

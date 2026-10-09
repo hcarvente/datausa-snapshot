@@ -15,6 +15,7 @@
       <option value="">United States</option>
     </select>
   </label>
+  <div class="note" id="place-note"></div>
 </header>
 
 <main>
@@ -24,14 +25,14 @@
   </section>
 
   <section class="state error" id="error" hidden>
-    <h3>Couldn't load data</h3>
+    <h3>We couldn't load the data</h3>
     <div class="note" id="error-message"></div>
-    <button class="retry" id="retry" type="button">Retry</button>
+    <button class="retry" id="retry" type="button">Try again</button>
   </section>
 
   <section class="state" id="empty" hidden>
-    <h3>No data available</h3>
-    <div class="note">The API returned no records for this selection.</div>
+    <h3>No data to show</h3>
+    <div class="note">We didn't find any data for this location and year. Try choosing a different location.</div>
   </section>
 
   <div id="content" hidden>

@@ -20,7 +20,8 @@ A small, dependency-free web app (HTML + CSS + JavaScript + JSON) that fetches l
 | 10 | Race & ethnicity get their own highlighted card with a "read this first" note | They are two separate Census questions and must not be added together; the card also shows each group's share against its overall share (dark tick) |
 | 11 | Show limits next to the data (card captions + "How to read this data" panel) | Survey estimates, mean wages, and group gaps are not proof of cause |
 | 12 | State picker filters every query with `State:<id>` in `include`; the choice is kept in the URL (`?state=06`) | The API filters by state without changing the drilldowns, so each section reuses its existing query. The URL makes a view shareable and survives reload |
-| 13 | Publish to GitHub | Nothing secret in the repo (no key), so safe to share |
+| 13 | Plain-language messages for non-developers; technical details go to the browser console | The page may be shown as an example, so visitors should never see "HTTP 400" or raw error text. Errors we throw carry a safe message (`UserFacingError`); anything unexpected shows a generic one |
+| 14 | Publish to GitHub | Nothing secret in the repo (no key), so safe to share |
 
 ## Features
 - Workforce size and average earnings (stat cards)
@@ -29,7 +30,7 @@ A small, dependency-free web app (HTML + CSS + JavaScript + JSON) that fetches l
 - Race and Hispanic origin breakdown (side by side), with average wage and a "small group" flag
 - Education breakdown (six levels, in order, with average wage)
 - State picker (50 states, DC, Puerto Rico; defaults to the whole US) that updates every section, with a shareable `?state=` link
-- Loading, error (with Retry, timeout, and a hint if opened as a file) and no-data states
+- Loading, error (with "Try again", a timeout, and a hint if opened as a file) and no-data states, all worded for non-developers
 - "How to read this data" panel
 
 ## Findings from API exploration
@@ -42,6 +43,15 @@ A small, dependency-free web app (HTML + CSS + JavaScript + JSON) that fetches l
 - Raw race has 9 groups, three of them different American Indian / Alaska Native labels (one very long); these are merged (config `raceLabels`).
 - Raw Hispanic origin has 24 values ("Not Hispanic" plus 23 origins); the app shows Not Hispanic, Mexican, Puerto Rican, Cuban and "Other Hispanic or Latino" (config `hispanicTop`).
 - The API sends `access-control-allow-origin: *`, so browser `fetch()` works from localhost.
+
+## Message wording (what visitors see)
+- Page error: "We couldn't load the data" plus one reason, e.g. "The data service is taking longer than usual to respond. Please try again in a moment." / "We couldn't reach the data service. Please check your internet connection and try again." / "The data service is busy right now..." (HTTP 429) / "...is having trouble right now..." (HTTP 5xx) / "...couldn't understand our request. It may have changed..." (other HTTP errors).
+- No data: "No data to show. We didn't find any data for this location and year. Try choosing a different location."
+- Card errors: "We couldn't load the gender breakdown. ..." with a "Try again" button.
+- Empty chart: "No data is available for this selection."
+- State list unavailable: "The list of states isn't available right now, so you're seeing the whole United States."
+- Opened as a file: explains how to run `python3 -m http.server`.
+- Status codes and raw API errors are only written to the browser console.
 
 ## State picker findings
 - `GET` with `drilldowns=State` lists 52 places (50 states, DC, Puerto Rico); state IDs look like `04000US06` (last two digits = FIPS code). The list is fetched from the API at startup, not hard-coded.
@@ -72,4 +82,5 @@ A small, dependency-free web app (HTML + CSS + JavaScript + JSON) that fetches l
 - [x] 7b. Demographic view: gender, age, race, Hispanic origin × industry (tested by focusing Construction)
 - [x] 7c. README, `.gitignore`, commit, pushed to https://github.com/hcarvente/datausa-snapshot
 - [x] 9. State picker (list from API, `State:<id>` filter, `?state=` URL, stale-load guard); tested California deep link and a switch to Wyoming
+- [x] 10. Friendly messages: rewrote every user-visible error, empty and loading message; tested a bad cube name (error), year 1999 (no data) and a broken state list (falls back to the whole US with a note)
 - [ ] 8. Final update of this log (ideas: median wage, margin of error, compare two states)
